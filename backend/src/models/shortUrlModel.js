@@ -20,26 +20,6 @@ const urlSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User",
   },
-  analytics: [{
-    timestamp: {
-      type: Date,
-      default: Date.now
-    },
-    referrer: String,
-    userAgent: String,
-    ipAddress: String,
-    country: String,
-    city: String,
-    device: String,
-    browser: String,
-    os: String
-  }],
-  qrCode: {
-    type: String,
-    default: null
-  }
-}, {
-  timestamps: true
 });
 
 const shortUrl = mongoose.model("shortUrl", urlSchema);

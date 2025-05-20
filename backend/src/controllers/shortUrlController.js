@@ -1,8 +1,5 @@
 import { nanoid } from "nanoid";
 import urlSchema from "../models/shortUrlModel.js";
-import QRCode from "qrcode";
-import geoip from "geoip-lite";
-import { UAParser } from "ua-parser-js";
 
 // ✅ Better internal URL validation using URL API
 function isValidUrl(string) {
@@ -12,34 +9,6 @@ function isValidUrl(string) {
   } catch (_) {
     return false;
   }
-}
-
-// Helper function to get real IP address
-function getClientIP(req) {
-  // Check for proxy headers first
-  const forwardedFor = req.headers['x-forwarded-for'];
-  if (forwardedFor) {
-    // Get the first IP in the list (client IP)
-    return forwardedFor.split(',')[0].trim();
-  }
-
-  // Check for other proxy headers
-  const realIP = req.headers['x-real-ip'];
-  if (realIP) {
-    return realIP;
-  }
-
-  // Get direct IP
-  const remoteAddr = req.socket.remoteAddress;
-  if (remoteAddr) {
-    // Handle IPv6 addresses
-    if (remoteAddr.includes('::ffff:')) {
-      return remoteAddr.split('::ffff:')[1];
-    }
-    return remoteAddr;
-  }
-
-  return null;
 }
 
 // 🎯 POST /api/urls - Create Short URL
@@ -63,31 +32,23 @@ export const createShortUrl = async (req, res) => {
         fullUrl: existing.full_url,
         shortUrl: `${process.env.BASE_URL}/${existing.short_url}`,
         createdAt: existing.createdAt,
-        qrCode: existing.qrCode
       });
     }
 
     // 🆕 Generate new short URL
     const shortUrl = nanoid(7);
-    const shortUrlFull = `${process.env.BASE_URL}/${shortUrl}`;
-    
-    // Generate QR Code
-    const qrCode = await QRCode.toDataURL(shortUrlFull);
-
     const newUrl = new urlSchema({
       full_url: url,
       short_url: shortUrl,
       user: req.user.id,
-      qrCode: qrCode
     });
 
     const savedUrl = await newUrl.save();
 
     res.status(201).json({
       fullUrl: savedUrl.full_url,
-      shortUrl: shortUrlFull,
+      shortUrl: `${process.env.BASE_URL}/${savedUrl.short_url}`,
       createdAt: savedUrl.createdAt,
-      qrCode: savedUrl.qrCode
     });
   } catch (error) {
     console.error("Create URL Error:", error.message);
@@ -104,34 +65,8 @@ export const redirectToFullUrl = async (req, res) => {
       return res.status(404).send("URL not found");
     }
 
-    // Get IP address and parse user agent
-    const ip = getClientIP(req);
-    const userAgent = new UAParser(req.headers['user-agent']);
-    const geo = ip ? geoip.lookup(ip) : null;
-
-    // Create analytics entry
-    const analyticsEntry = {
-      timestamp: new Date(),
-      referrer: req.headers.referer || 'Direct',
-      userAgent: req.headers['user-agent'],
-      ipAddress: ip || 'Unknown',
-      country: geo ? geo.country : 'Unknown',
-      city: geo ? geo.city : 'Unknown',
-      device: userAgent.getDevice().type || 'Unknown',
-      browser: userAgent.getBrowser().name || 'Unknown',
-      os: userAgent.getOS().name || 'Unknown'
-    };
-
-    // Log the analytics data for debugging
-    console.log('Analytics Entry:', {
-      ip,
-      geo,
-      userAgent: userAgent.getResult()
-    });
-
-    // Increment the click count and add analytics
+    // Increment the click count
     url.clicks += 1;
-    url.analytics.push(analyticsEntry);
     await url.save();
 
     // Redirect to the full URL
@@ -142,6 +77,7 @@ export const redirectToFullUrl = async (req, res) => {
   }
 };
 
+
 // 📋 GET /api/urls - Get all URLs for a user
 export const getUserUrls = async (req, res) => {
   try {
@@ -149,15 +85,11 @@ export const getUserUrls = async (req, res) => {
       .find({ user: req.user.id })
       .sort({ createdAt: -1 });
 
-    const baseUrl = process.env.BASE_URL;
+    const baseUrl = process.env.BASE_URL; // e.g. "http://localhost:5000/"
 
     const urlsWithFullShortUrl = urls.map((url) => ({
       ...url.toObject(),
-      short_url: baseUrl + url.short_url,
-      analytics: url.analytics.map(entry => ({
-        ...entry,
-        timestamp: entry.timestamp.toISOString()
-      }))
+      short_url: baseUrl + url.short_url, // append short code to base URL
     }));
 
     res.status(200).json(urlsWithFullShortUrl);
@@ -166,6 +98,7 @@ export const getUserUrls = async (req, res) => {
     res.status(500).send("Server Error");
   }
 };
+
 
 // 🗑 DELETE /:id - Delete a URL by ID
 export const deleteUrl = async (req, res) => {
