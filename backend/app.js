@@ -19,7 +19,7 @@ connectDB();
 // Middleware
 app.use(
   cors({
-    origin: "https://cur-rzob.onrender.com",
+    origin: ["https://cur-rzob.onrender.com","http://localhost:5173"]
   })
 );
 app.use(express.json()); // Parse JSON bodies
