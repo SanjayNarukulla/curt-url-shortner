@@ -13,7 +13,7 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErrors([]); // Clear previous errors
+    setErrors([]); 
 
     try {
       const res = await axios.post(`${BASE_URL}/api/auth/login`, form);
