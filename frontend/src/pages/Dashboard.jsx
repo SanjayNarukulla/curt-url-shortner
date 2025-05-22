@@ -35,6 +35,7 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
       setUrls(res.data);
+      console.log(res.data)
     } catch (error) {
       console.error("Fetch Error:", error.message);
       if (error.response?.status === 401) {

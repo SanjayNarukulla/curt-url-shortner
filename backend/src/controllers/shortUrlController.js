@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import urlSchema from "../models/shortUrlModel.js";
+import axios from "axios";
 
 // ✅ Better internal URL validation using URL API
 function isValidUrl(string) {
