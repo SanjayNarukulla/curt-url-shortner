@@ -11,9 +11,18 @@ function isValidUrl(string) {
   }
 }
 
+const getClientIp = (req) => {
+  return (
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.connection.remoteAddress ||
+    req.socket?.remoteAddress ||
+    "0.0.0.0"
+  );
+};
+
 // 🎯 POST /api/urls - Create Short URL
 export const createShortUrl = async (req, res) => {
-  const { url } = req.body;
+  const { url, customUrl } = req.body;
 
   // Double-check validation (in case express-validator missed anything)
   if (!isValidUrl(url)) {
@@ -21,6 +30,19 @@ export const createShortUrl = async (req, res) => {
   }
 
   try {
+    // If a custom URL is provided, check if it's already in use
+    if (customUrl) {
+      const existingCustomUrl = await urlSchema.findOne({
+        short_url: customUrl,
+      });
+
+      if (existingCustomUrl) {
+        return res.status(400).json({
+          error: "This custom URL is already taken. Please choose another one.",
+        });
+      }
+    }
+
     // 🔍 Check if user already shortened the same URL
     const existing = await urlSchema.findOne({
       full_url: url,
@@ -35,8 +57,8 @@ export const createShortUrl = async (req, res) => {
       });
     }
 
-    // 🆕 Generate new short URL
-    const shortUrl = nanoid(7);
+    // 🆕 Generate or use custom short URL
+    const shortUrl = customUrl || nanoid(7);
     const newUrl = new urlSchema({
       full_url: url,
       short_url: shortUrl,
@@ -59,24 +81,37 @@ export const createShortUrl = async (req, res) => {
 // 🔁 GET /:shortUrl - Redirect to original URL and increment clicks
 export const redirectToFullUrl = async (req, res) => {
   try {
-    const url = await urlSchema.findOne({ short_url: req.params.shortUrl });
+    const shortCode = req.params.shortUrl;
+    const url = await urlSchema.findOne({ short_url: shortCode });
 
     if (!url) {
       return res.status(404).send("URL not found");
     }
 
-    // Increment the click count
+    // 🔎 Extract IP and fetch geolocation data
+    const ip = getClientIp(req);
+
+    let geo = {};
+    try {
+      const geoRes = await axios.get(`http://ip-api.com/json/${ip}`);
+      const { city, regionName: region, country } = geoRes.data;
+      geo = { ip, city, region, country };
+    } catch (geoErr) {
+      console.error("Geolocation API failed:", geoErr.message);
+      geo = { ip, city: "Unknown", region: "Unknown", country: "Unknown" };
+    }
+
+    // 📝 Push click details
     url.clicks += 1;
+    url.clickDetails.push(geo);
     await url.save();
 
-    // Redirect to the full URL
     return res.redirect(url.full_url);
   } catch (error) {
     console.error("Redirect Error:", error.message);
     res.status(500).send("Server Error");
   }
 };
-
 
 // 📋 GET /api/urls - Get all URLs for a user
 export const getUserUrls = async (req, res) => {
@@ -98,7 +133,6 @@ export const getUserUrls = async (req, res) => {
     res.status(500).send("Server Error");
   }
 };
-
 
 // 🗑 DELETE /:id - Delete a URL by ID
 export const deleteUrl = async (req, res) => {
