@@ -19,6 +19,7 @@ export default function Login() {
       const res = await axios.post(`${BASE_URL}/api/auth/login`, form);
       login(res.data);
       navigate("/");
+      console.log(res.data)
     } catch (err) {
       const res = err.response;
 
@@ -74,6 +75,7 @@ export default function Login() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
             className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
             required
+            autoComplete="current-password"
           />
         </div>
 

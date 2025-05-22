@@ -4,6 +4,7 @@ import {
   redirectToFullUrl,
   getUserUrls,
   deleteUrl,
+  getUrlAnalytics,
 } from "../controllers/shortUrlController.js";
 
 import protect from "../middleware/auth.js";
@@ -27,6 +28,7 @@ router.get("/:shortUrl", redirectToFullUrl);
 // Protected Routes
 router.post("/", protect, urlValidator, runValidation, createShortUrl);
 router.get("/", protect, getUserUrls);
+router.get("/analytics/:id", protect, getUrlAnalytics);
 router.delete("/:id", protect, deleteUrl);
 
 export default router;

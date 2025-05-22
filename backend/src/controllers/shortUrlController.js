@@ -1,50 +1,40 @@
 import { nanoid } from "nanoid";
-import urlSchema from "../models/shortUrlModel.js";
 import axios from "axios";
+import urlSchema from "../models/shortUrlModel.js";
 
-// ✅ Better internal URL validation using URL API
-function isValidUrl(string) {
+// Utility: Validate URL format
+const isValidUrl = (string) => {
   try {
     const url = new URL(string);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch (_) {
+    return ["http:", "https:"].includes(url.protocol);
+  } catch {
     return false;
   }
-}
-
-const getClientIp = (req) => {
-  return (
-    req.headers["x-forwarded-for"]?.split(",")[0] ||
-    req.connection.remoteAddress ||
-    req.socket?.remoteAddress ||
-    "0.0.0.0"
-  );
 };
 
-// 🎯 POST /api/urls - Create Short URL
+// Utility: Get client IP address
+const getClientIp = (req) =>
+  req.headers["x-forwarded-for"]?.split(",")[0] ||
+  req.connection.remoteAddress ||
+  req.socket?.remoteAddress ||
+  "0.0.0.0";
+
+// 📌 POST: Create a new short URL
 export const createShortUrl = async (req, res) => {
   const { url, customUrl } = req.body;
 
-  // Double-check validation (in case express-validator missed anything)
   if (!isValidUrl(url)) {
     return res.status(400).json({ error: "Invalid URL" });
   }
 
   try {
-    // If a custom URL is provided, check if it's already in use
     if (customUrl) {
-      const existingCustomUrl = await urlSchema.findOne({
-        short_url: customUrl,
-      });
-
-      if (existingCustomUrl) {
-        return res.status(400).json({
-          error: "This custom URL is already taken. Please choose another one.",
-        });
+      const exists = await urlSchema.findOne({ short_url: customUrl });
+      if (exists) {
+        return res.status(400).json({ error: "Custom URL is already taken." });
       }
     }
 
-    // 🔍 Check if user already shortened the same URL
     const existing = await urlSchema.findOne({
       full_url: url,
       user: req.user.id,
@@ -58,101 +48,107 @@ export const createShortUrl = async (req, res) => {
       });
     }
 
-    // 🆕 Generate or use custom short URL
     const shortUrl = customUrl || nanoid(7);
-    const newUrl = new urlSchema({
+    const newUrl = await urlSchema.create({
       full_url: url,
       short_url: shortUrl,
       user: req.user.id,
     });
 
-    const savedUrl = await newUrl.save();
-
     res.status(201).json({
-      fullUrl: savedUrl.full_url,
-      shortUrl: `${process.env.BASE_URL}/${savedUrl.short_url}`,
-      createdAt: savedUrl.createdAt,
+      fullUrl: newUrl.full_url,
+      shortUrl: `${process.env.BASE_URL}/${newUrl.short_url}`,
+      createdAt: newUrl.createdAt,
     });
-  } catch (error) {
-    console.error("Create URL Error:", error.message);
+  } catch (err) {
+    console.error("❌ createShortUrl Error:", err.message);
     res.status(500).send("Server Error");
   }
 };
 
-// 🔁 GET /:shortUrl - Redirect to original URL and increment clicks
+// 🔁 GET: Redirect to full URL + Track Clicks
 export const redirectToFullUrl = async (req, res) => {
   try {
-    const shortCode = req.params.shortUrl;
-    const url = await urlSchema.findOne({ short_url: shortCode });
+    const shortUrl = req.params.shortUrl;
+    const urlData = await urlSchema.findOne({ short_url: shortUrl });
 
-    if (!url) {
-      return res.status(404).send("URL not found");
-    }
+    if (!urlData) return res.status(404).send("URL not found");
 
-    // 🔎 Extract IP and fetch geolocation data
     const ip = getClientIp(req);
 
-    let geo = {};
+    let geo = { ip, city: "Unknown", region: "Unknown", country: "Unknown" };
     try {
-      const geoRes = await axios.get(`http://ip-api.com/json/${ip}`);
-      const { city, regionName: region, country } = geoRes.data;
+      const { data } = await axios.get(`http://ip-api.com/json/${ip}`);
+      const { city, regionName: region, country } = data;
       geo = { ip, city, region, country };
     } catch (geoErr) {
-      console.error("Geolocation API failed:", geoErr.message);
-      geo = { ip, city: "Unknown", region: "Unknown", country: "Unknown" };
+      console.error("🌐 Geolocation fetch failed:", geoErr.message);
     }
 
-    // 📝 Push click details
-    url.clicks += 1;
-    url.clickDetails.push(geo);
-    await url.save();
+    urlData.clicks++;
+    urlData.clickDetails.push(geo);
+    await urlData.save();
 
-    return res.redirect(url.full_url);
-  } catch (error) {
-    console.error("Redirect Error:", error.message);
+    res.redirect(urlData.full_url);
+  } catch (err) {
+    console.error("❌ redirectToFullUrl Error:", err.message);
     res.status(500).send("Server Error");
   }
 };
 
-// 📋 GET /api/urls - Get all URLs for a user
+// 📋 GET: Fetch URLs created by the user
 export const getUserUrls = async (req, res) => {
   try {
     const urls = await urlSchema
       .find({ user: req.user.id })
       .sort({ createdAt: -1 });
 
-    const baseUrl = process.env.BASE_URL; // e.g. "http://localhost:5000/"
-
-    const urlsWithFullShortUrl = urls.map((url) => ({
+    const fullUrls = urls.map((url) => ({
       ...url.toObject(),
-      short_url: baseUrl + url.short_url, // append short code to base URL
+      short_url: `${process.env.BASE_URL}/${url.short_url}`,
     }));
 
-    res.status(200).json(urlsWithFullShortUrl);
-  } catch (error) {
-    console.error("Fetch URLs Error:", error.message);
+    res.status(200).json(fullUrls);
+  } catch (err) {
+    console.error("❌ getUserUrls Error:", err.message);
     res.status(500).send("Server Error");
   }
 };
 
-// 🗑 DELETE /:id - Delete a URL by ID
+// 🗑 DELETE: Remove a short URL
 export const deleteUrl = async (req, res) => {
   try {
     const url = await urlSchema.findById(req.params.id);
 
-    if (!url) {
-      return res.status(404).json({ error: "URL not found" });
-    }
-
-    // 🔐 Ensure user owns the URL
+    if (!url) return res.status(404).json({ error: "URL not found" });
     if (url.user.toString() !== req.user.id) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
     await url.deleteOne();
     res.status(200).json({ message: "URL deleted" });
-  } catch (error) {
-    console.error("Delete URL Error:", error.message);
+  } catch (err) {
+    console.error("❌ deleteUrl Error:", err.message);
     res.status(500).send("Server Error");
+  }
+};
+
+// 📊 GET: Get analytics for a specific short URL
+export const getUrlAnalytics = async (req, res) => {
+  try {
+    const url = await urlSchema.findById(req.params.id);
+
+    if (!url) return res.status(404).json({ error: "URL not found" });
+
+    res.status(200).json({
+      fullUrl: url.full_url,
+      shortUrl: `${process.env.BASE_URL}/${url.short_url}`,
+      clicks: url.clicks,
+      clickDetails: url.clickDetails,
+      createdAt: url.createdAt,
+    });
+  } catch (err) {
+    console.error("❌ getUrlAnalytics Error:", err.message);
+    res.status(500).json({ error: "Server Error" });
   }
 };
