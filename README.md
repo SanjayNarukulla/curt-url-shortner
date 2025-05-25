@@ -159,12 +159,6 @@ Tailwind-styled 404 page that shows when a user navigates to an unknown route.
 
 ---
 
-## 📸 Screenshots
-
-*(Add your app screenshots here showing Dashboard, Short URL form, Analytics, and 404 page.)*
-
----
-
 ## 🔥 Deployment
 
 You can deploy the frontend on platforms like **Netlify** or **Vercel**, and the backend on services like **Render** or **Heroku**.
@@ -177,11 +171,7 @@ This project is licensed under the MIT License.
 
 ---
 
-## 🤝 Contributing
 
-Feel free to fork the repo, make changes, and submit pull requests.
-
----
 
 ## 📞 Contact
 
