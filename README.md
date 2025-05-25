@@ -185,7 +185,7 @@ Feel free to fork the repo, make changes, and submit pull requests.
 
 ## 📞 Contact
 
-For inquiries, please contact: **your-email@example.com**
+For inquiries, please contact: **narukullasanjay@gmail.com**
 
 ---
 
